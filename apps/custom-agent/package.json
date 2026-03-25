@@ -1,0 +1,17 @@
+{
+  "name": "custom-agent",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "bun ./gateway/index.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.24.0",
+  "dependencies": {
+    "events": "^3.3.0",
+    "ws": "^8.20.0"
+  }
+}
