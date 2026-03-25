@@ -15,3 +15,9 @@
 # 好用的 SKILLS
 
 - [Marketing Skills for AI Agents](https://github.com/coreyhaines31/marketingskills)
+- [gstack](https://github.com/garrytan/gstack)
+
+# 框架
+
+- [openclaw-mini](https://github.com/voocel/openclaw-mini)
+- [pi-mono](https://github.com/badlogic/pi-mono)
