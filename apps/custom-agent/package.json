@@ -4,14 +4,19 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "bun ./gateway/index.ts"
+    "start": "bun ./gateway/index.ts",
+    "agent": "bun ./index.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "packageManager": "pnpm@10.24.0",
   "dependencies": {
+    "@types/node": "^25.5.0",
     "events": "^3.3.0",
+    "js-yaml": "^4.1.1",
+    "langchain": "link:apps/langchain",
+    "openai": "link:apps/openai",
     "ws": "^8.20.0"
   }
 }

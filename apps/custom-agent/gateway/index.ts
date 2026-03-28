@@ -32,6 +32,8 @@ async function main() {
 
   await sseServer.start();
 
+  console.error("Agent Gateway started", sseServer.getConnectionCount());
+
   console.log("Agent Gateway started");
   console.log("WebSocket: ws://localhost:8080/agent/ws");
   console.log("SSE: http://localhost:8081/agent/sse");
