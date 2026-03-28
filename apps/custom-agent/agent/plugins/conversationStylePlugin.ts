@@ -16,7 +16,7 @@ export interface StyleConfig {
  * 对话风格插件
  * 调整 Agent 的回复风格
  */
-export class ConversationStylePlugin implements PluginHooks {
+export class ConversationStylePlugin implements Plugin {
   public metadata: PluginMetadata = {
     name: "conversation-style",
     version: "1.0.0",

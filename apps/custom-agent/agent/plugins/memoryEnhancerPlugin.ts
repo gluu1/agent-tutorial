@@ -15,7 +15,7 @@ export interface MemoryEnhancerConfig {
  * 记忆增强插件
  * 自动提取重要信息，增强记忆能力
  */
-export class MemoryEnhancerPlugin implements PluginHooks {
+export class MemoryEnhancerPlugin implements Plugin {
   public metadata: PluginMetadata = {
     name: "memory-enhancer",
     version: "1.0.0",

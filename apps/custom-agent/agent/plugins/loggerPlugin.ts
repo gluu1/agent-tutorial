@@ -20,7 +20,7 @@ export interface LoggerPluginConfig {
  * 日志插件
  * 记录 Agent 运行的所有事件和状态变化
  */
-export class LoggerPlugin implements PluginHooks {
+export class LoggerPlugin implements Plugin {
   public metadata: PluginMetadata = {
     name: "logger",
     version: "1.0.0",

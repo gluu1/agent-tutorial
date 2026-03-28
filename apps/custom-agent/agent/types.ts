@@ -1,6 +1,4 @@
 // core/types.ts
-import { Agent } from "./agent";
-import { AgentLoop } from "./agent-loop";
 
 /**
  * Agent 配置
@@ -379,22 +377,4 @@ export interface LongTermMemoryItem {
   accessCount: number;
   lastAccessAt: number;
   createdAt: number;
-}
-
-/**
- * 插件接口
- */
-export interface Plugin {
-  name: string;
-  version: string;
-  description?: string;
-
-  onInit?(agent: Agent, config: AgentConfig): Promise<void>;
-  onBeforeLoop?(loop: AgentLoop, input: string): Promise<void>;
-  onAfterLoop?(loop: AgentLoop, result: AgentResult): Promise<void>;
-  onBeforeToolCall?(toolName: string, params: any): Promise<any>;
-  onAfterToolCall?(toolName: string, result: any): Promise<void>;
-  onMessage?(message: AgentMessage): Promise<AgentMessage>;
-  onError?(error: Error): Promise<void>;
-  onDestroy?(): Promise<void>;
 }

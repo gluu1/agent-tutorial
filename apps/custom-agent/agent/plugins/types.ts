@@ -1,17 +1,17 @@
 // core/plugins/types.ts
 
-import { Agent } from "../agent.js";
-import { AgentLoop } from "../agent-loop.js";
+import { Agent } from "../agent";
+import { AgentLoop } from "../agent-loop";
 import {
   AgentConfig,
   AgentResult,
   AgentMessage,
-  ToolCall,
+  AgentEvent,
   ToolDefinition,
 } from "../types";
 
 /**
- * Plugin 生命周期钩子
+ * 插件生命周期钩子（完整版）
  */
 export interface PluginHooks {
   /**
@@ -35,9 +35,13 @@ export interface PluginHooks {
   onAfterLoop?(loop: AgentLoop, result: AgentResult): Promise<void>;
 
   /**
-   * 工具调用前
+   * 工具调用前（可修改参数）
    */
-  onBeforeToolCall?(toolName: string, params: any): Promise<any>;
+  onBeforeToolCall?(
+    params: any,
+    toolName: string,
+    originalParams: string,
+  ): Promise<any>;
 
   /**
    * 工具调用后
@@ -45,7 +49,7 @@ export interface PluginHooks {
   onAfterToolCall?(toolName: string, result: any): Promise<void>;
 
   /**
-   * 消息处理前
+   * 消息处理前（可修改消息）
    */
   onBeforeMessage?(message: AgentMessage): Promise<AgentMessage>;
 
@@ -60,18 +64,32 @@ export interface PluginHooks {
   onError?(error: Error): Promise<void>;
 
   /**
-   * 用户输入预处理
+   * 用户输入预处理（可修改输入）
    */
   onUserInput?(input: string): Promise<string>;
 
   /**
-   * 模型响应后处理
+   * 模型响应后处理（可修改响应）
    */
   onModelResponse?(response: any): Promise<any>;
+
+  /**
+   * Agent 事件
+   */
+  onAgentEvent?(event: AgentEvent): Promise<void>;
+
+  /**
+   * 工具确认请求（返回 true 表示确认执行）
+   */
+  onToolConfirmation?(
+    confirmed: boolean,
+    tool: ToolDefinition,
+    params: any,
+  ): Promise<boolean>;
 }
 
 /**
- * Plugin 配置
+ * 插件配置
  */
 export interface PluginConfig {
   enabled: boolean;
@@ -79,7 +97,7 @@ export interface PluginConfig {
 }
 
 /**
- * Plugin 元数据
+ * 插件元数据
  */
 export interface PluginMetadata {
   name: string;
@@ -89,22 +107,53 @@ export interface PluginMetadata {
   license?: string;
   dependencies?: string[];
   permissions?: string[];
+  requires?: string[]; // 依赖的其他插件
+}
+
+/**
+ * 插件基础类（可选，提供空实现）
+ */
+export abstract class BasePlugin implements Plugin {
+  abstract metadata: PluginMetadata;
+
+  async onInit(agent: Agent, config: AgentConfig): Promise<void> {}
+  async onDestroy(): Promise<void> {}
+  async onBeforeLoop(loop: AgentLoop, input: string): Promise<void> {}
+  async onAfterLoop(loop: AgentLoop, result: AgentResult): Promise<void> {}
+  async onBeforeToolCall(
+    params: any,
+    toolName: string,
+    originalParams: string,
+  ): Promise<any> {
+    return params;
+  }
+  async onAfterToolCall(toolName: string, result: any): Promise<void> {}
+  async onBeforeMessage(message: AgentMessage): Promise<AgentMessage> {
+    return message;
+  }
+  async onAfterMessage(message: AgentMessage): Promise<AgentMessage> {
+    return message;
+  }
+  async onError(error: Error): Promise<void> {}
+  async onUserInput(input: string): Promise<string> {
+    return input;
+  }
+  async onModelResponse(response: any): Promise<any> {
+    return response;
+  }
+  async onAgentEvent(event: AgentEvent): Promise<void> {}
+  async onToolConfirmation(
+    confirmed: boolean,
+    tool: ToolDefinition,
+    params: any,
+  ): Promise<boolean> {
+    return confirmed;
+  }
 }
 
 /**
  * 插件接口
  */
-export interface Plugin {
-  name: string;
-  version: string;
-  description?: string;
-
-  onInit?(agent: Agent, config: AgentConfig): Promise<void>;
-  onBeforeLoop?(loop: AgentLoop, input: string): Promise<void>;
-  onAfterLoop?(loop: AgentLoop, result: AgentResult): Promise<void>;
-  onBeforeToolCall?(toolName: string, params: any): Promise<any>;
-  onAfterToolCall?(toolName: string, result: any): Promise<void>;
-  onMessage?(message: AgentMessage): Promise<AgentMessage>;
-  onError?(error: Error): Promise<void>;
-  onDestroy?(): Promise<void>;
+export interface Plugin extends PluginHooks {
+  metadata: PluginMetadata;
 }

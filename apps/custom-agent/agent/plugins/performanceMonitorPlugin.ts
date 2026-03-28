@@ -19,7 +19,7 @@ export interface MonitorConfig {
  * 性能监控插件
  * 监控 Agent 的性能指标
  */
-export class PerformanceMonitorPlugin implements PluginHooks {
+export class PerformanceMonitorPlugin implements Plugin {
   public metadata: PluginMetadata = {
     name: "performance-monitor",
     version: "1.0.0",

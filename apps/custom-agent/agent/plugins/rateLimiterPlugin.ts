@@ -17,7 +17,7 @@ export interface RateLimiterConfig {
  * 限流插件
  * 控制 API 调用频率和成本
  */
-export class RateLimiterPlugin implements PluginHooks {
+export class RateLimiterPlugin implements Plugin {
   public metadata: PluginMetadata = {
     name: "rate-limiter",
     version: "1.0.0",

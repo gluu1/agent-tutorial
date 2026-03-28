@@ -1,22 +1,27 @@
 // core/agent.ts - Agent 主入口
 
+import * as fs from "fs";
+import * as path from "path";
 import { EventEmitter } from "events";
 import {
   AgentConfig,
   AgentResult,
   AgentEvent,
-  Plugin,
   ToolDefinition,
   ExecutionContext,
   AgentMessage,
+  MemoryConfig,
+  ContextConfig,
+  ToolConfig,
+  LoopConfig,
 } from "./types";
 import { ThreeTierMemoryManager } from "./memory/threeTierMemory";
 import { SkillsManager } from "./skills/manager";
 import { ContextAssembler, ContextCompressor } from "./context/optimizer";
 import { ToolExecutor, ToolLoader } from "./tools/registry";
 import { AgentLoop } from "./agent-loop";
-import * as fs from "fs";
-import * as path from "path";
+import { PluginManager } from "./plugins/manager";
+import { Plugin } from "./plugins/types";
 
 /**
  * Agent 主类
@@ -32,6 +37,7 @@ export class Agent extends EventEmitter {
   private contextCompressor: ContextCompressor;
   private agentLoop: AgentLoop;
   private plugins: Map<string, Plugin> = new Map();
+  private pluginManager: PluginManager;
   private workspaceFiles: Map<string, string> = new Map();
   private isRunning: boolean = false;
 
@@ -39,26 +45,29 @@ export class Agent extends EventEmitter {
     super();
     this.config = this.mergeConfig(config);
 
-    console.error("Merged Agent Config:", JSON.stringify(this.config, null, 2));
+    // 初始化插件管理器
+    this.pluginManager = new PluginManager(this);
 
     // 初始化三层记忆
     this.memory = new ThreeTierMemoryManager(
       this.config.sessionId,
-      this.config.memoryConfig!,
+      this.config.memoryConfig as MemoryConfig,
     );
 
     // 初始化 Skills 管理器
     this.skillsManager = new SkillsManager(this.config.skillsConfig!);
 
     // 初始化工具执行器
-    this.toolExecutor = new ToolExecutor(this.config.toolConfig!);
+    this.toolExecutor = new ToolExecutor(this.config.toolConfig as ToolConfig);
 
     // 初始化上下文组件
     this.contextAssembler = new ContextAssembler(
-      this.config.contextConfig!,
+      this.config.contextConfig as ContextConfig,
       this.memory,
     );
-    this.contextCompressor = new ContextCompressor(this.config.contextConfig!);
+    this.contextCompressor = new ContextCompressor(
+      this.config.contextConfig as ContextConfig,
+    );
 
     // 初始化 Agent 循环
     this.agentLoop = new AgentLoop(
@@ -86,6 +95,8 @@ export class Agent extends EventEmitter {
 
     // 4. 初始化插件
     await this.initPlugins();
+    // 4. 初始化插件管理器（这会触发所有插件的 onInit）
+    await this.pluginManager.init(this.config);
 
     // 5. 设置记忆的摘要函数
     this.memory.setSummarizeFn(async (messages) => {
@@ -108,7 +119,7 @@ export class Agent extends EventEmitter {
   /**
    * 运行 Agent
    */
-  async run(input: string): Promise<AgentResult> {
+  async invoke(input: string): Promise<AgentResult> {
     if (this.isRunning) {
       throw new Error("Agent is already running");
     }
@@ -116,12 +127,25 @@ export class Agent extends EventEmitter {
     this.isRunning = true;
     this.emit("start", { input, sessionId: this.config.sessionId });
 
+    // 插件：用户输入预处理
+    const processedInput = await this.pluginManager.callInterceptHook(
+      "onUserInput",
+      input,
+    );
+
     try {
-      // 调用插件钩子
-      await this.callPluginHook("onBeforeLoop", this.agentLoop, input);
+      // 插件：循环开始前
+      await this.pluginManager.callHook(
+        "onBeforeLoop",
+        this.agentLoop,
+        processedInput,
+      );
 
       // 执行循环
       const result = await this.agentLoop.run(input);
+
+      // 插件：循环结束后
+      await this.pluginManager.callHook("onAfterLoop", this.agentLoop, result);
 
       // 存储到长期记忆（重要结果）
       if (result.success && result.answer) {
@@ -132,12 +156,11 @@ export class Agent extends EventEmitter {
         );
       }
 
-      // 调用插件钩子
-      await this.callPluginHook("onAfterLoop", this.agentLoop, result);
-
       this.emit("complete", result);
       return result;
     } catch (error) {
+      // 插件：错误处理
+      await this.pluginManager.callHook("onError", error);
       this.emit("error", error);
       throw error;
     } finally {
@@ -159,9 +182,66 @@ export class Agent extends EventEmitter {
   /**
    * 注册插件
    */
-  registerPlugin(plugin: Plugin): void {
-    this.plugins.set(plugin.name, plugin);
-    console.log(`Plugin registered: ${plugin.name} v${plugin.version}`);
+  registerPlugin(plugin: Plugin, config?: any): void {
+    this.pluginManager.register(plugin, config);
+    console.log(
+      `Plugin registered: ${plugin.metadata.name} v${plugin.metadata.version}`,
+    );
+  }
+
+  /**
+   * 批量注册插件
+   */
+  registerPlugins(plugins: [Plugin], config?: any): void {
+    this.pluginManager.registerAll(plugins);
+  }
+  /**
+   * 获取插件
+   */
+  getPlugin(name: string): Plugin | undefined {
+    return this.pluginManager.getPlugin(name);
+  }
+
+  /**
+   * 获取所有插件
+   */
+  getAllPlugins(): Plugin[] {
+    return this.pluginManager.getAllPlugins();
+  }
+
+  /**
+   * 启用插件
+   */
+  enablePlugin(name: string): void {
+    this.pluginManager.enablePlugin(name);
+  }
+
+  /**
+   * 禁用插件
+   */
+  disablePlugin(name: string): void {
+    this.pluginManager.disablePlugin(name);
+  }
+
+  /**
+   * 获取配置
+   */
+  getConfig(): AgentConfig {
+    return this.config;
+  }
+
+  /**
+   * 获取记忆管理器
+   */
+  getMemory(): ThreeTierMemoryManager {
+    return this.memory;
+  }
+
+  /**
+   * 获取工具执行器
+   */
+  getToolExecutor(): ToolExecutor {
+    return this.toolExecutor;
   }
 
   /**
@@ -212,7 +292,7 @@ export class Agent extends EventEmitter {
    */
   private async registerTools(): Promise<void> {
     // 1. 加载内置工具
-    const toolLoader = new ToolLoader(this.config.toolConfig!);
+    const toolLoader = new ToolLoader(this.config.toolConfig as ToolConfig);
     const builtinTools = toolLoader.loadBuiltinTools();
     this.toolExecutor.registerAll(builtinTools);
 
@@ -239,25 +319,6 @@ export class Agent extends EventEmitter {
       if (plugin.onInit) {
         await plugin.onInit(this, this.config);
         console.log(`Plugin initialized: ${name}`);
-      }
-    }
-  }
-
-  /**
-   * 调用插件钩子
-   */
-  private async callPluginHook(
-    hook: keyof Plugin,
-    ...args: any[]
-  ): Promise<void> {
-    for (const plugin of this.plugins.values()) {
-      const fn = plugin[hook];
-      if (fn) {
-        try {
-          await (fn as any)(...args);
-        } catch (error) {
-          console.error(`Plugin ${plugin.name} hook ${hook} failed:`, error);
-        }
       }
     }
   }
