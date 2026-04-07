@@ -10,6 +10,9 @@ importers:
 
   apps/custom-agent:
     dependencies:
+      '@langchain/ollama':
+        specifier: ^1.1.0
+        version: 1.2.5(@langchain/core@1.1.29(openai@apps+custom-agent+apps+openai))
       '@types/node':
         specifier: ^25.5.0
         version: 25.5.0
@@ -2172,6 +2175,24 @@ snapshots:
       - '@opentelemetry/sdk-trace-base'
       - openai
 
+  '@langchain/core@1.1.29(openai@apps+custom-agent+apps+openai)':
+    dependencies:
+      '@cfworker/json-schema': 4.1.1
+      ansi-styles: 5.2.0
+      camelcase: 6.3.0
+      decamelize: 1.2.0
+      js-tiktoken: 1.0.21
+      langsmith: 0.5.7(openai@apps+custom-agent+apps+openai)
+      mustache: 4.2.0
+      p-queue: 6.6.2
+      uuid: 11.1.0
+      zod: 4.3.6
+    transitivePeerDependencies:
+      - '@opentelemetry/api'
+      - '@opentelemetry/exporter-trace-otlp-proto'
+      - '@opentelemetry/sdk-trace-base'
+      - openai
+
   '@langchain/langgraph-checkpoint@1.0.0(@langchain/core@1.1.29(openai@6.25.0(ws@8.20.0)(zod@4.3.6)))':
     dependencies:
       '@langchain/core': 1.1.29(openai@6.25.0(ws@8.20.0)(zod@4.3.6))
@@ -2203,6 +2224,12 @@ snapshots:
   '@langchain/ollama@1.2.5(@langchain/core@1.1.29(openai@6.25.0(ws@8.20.0)(zod@4.3.6)))':
     dependencies:
       '@langchain/core': 1.1.29(openai@6.25.0(ws@8.20.0)(zod@4.3.6))
+      ollama: 0.6.3
+      uuid: 10.0.0
+
+  '@langchain/ollama@1.2.5(@langchain/core@1.1.29(openai@apps+custom-agent+apps+openai))':
+    dependencies:
+      '@langchain/core': 1.1.29(openai@apps+custom-agent+apps+openai)
       ollama: 0.6.3
       uuid: 10.0.0
 
@@ -2740,7 +2767,7 @@ snapshots:
       isstream: 0.1.2
       jsonwebtoken: 9.0.3
       mime-types: 2.1.35
-      retry-axios: 2.6.0(axios@1.13.5(debug@4.4.3))
+      retry-axios: 2.6.0(axios@1.13.5)
       tough-cookie: 4.1.4
     transitivePeerDependencies:
       - supports-color
@@ -2870,6 +2897,17 @@ snapshots:
       uuid: 10.0.0
     optionalDependencies:
       openai: 6.25.0(ws@8.20.0)(zod@4.3.6)
+
+  langsmith@0.5.7(openai@apps+custom-agent+apps+openai):
+    dependencies:
+      '@types/uuid': 10.0.0
+      chalk: 5.6.2
+      console-table-printer: 2.15.0
+      p-queue: 6.6.2
+      semver: 7.7.4
+      uuid: 10.0.0
+    optionalDependencies:
+      openai: link:apps/custom-agent/apps/openai
 
   lodash.camelcase@4.3.0: {}
 
@@ -3090,7 +3128,7 @@ snapshots:
 
   resolve-pkg-maps@1.0.0: {}
 
-  retry-axios@2.6.0(axios@1.13.5(debug@4.4.3)):
+  retry-axios@2.6.0(axios@1.13.5):
     dependencies:
       axios: 1.13.5(debug@4.4.3)
 

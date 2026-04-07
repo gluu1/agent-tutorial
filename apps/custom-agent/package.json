@@ -17,6 +17,7 @@
     "js-yaml": "^4.1.1",
     "langchain": "link:apps/langchain",
     "openai": "link:apps/openai",
-    "ws": "^8.20.0"
+    "ws": "^8.20.0",
+    "@langchain/ollama": "^1.1.0"
   }
 }

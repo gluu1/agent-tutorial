@@ -1,6 +1,7 @@
 // core/agent-loop.ts
 
 import { EventEmitter } from "events";
+import { ChatOllama } from "@langchain/ollama";
 import {
   AgentConfig,
   AgentResult,
@@ -25,6 +26,7 @@ export class AgentLoop extends EventEmitter {
   private contextAssembler: ContextAssembler;
   private isRunning: boolean = true;
   private abortController: AbortController;
+  private model: ChatOllama;
 
   constructor(
     config: AgentConfig,
@@ -38,6 +40,14 @@ export class AgentLoop extends EventEmitter {
     this.toolExecutor = toolExecutor;
     this.contextAssembler = contextAssembler;
     this.abortController = new AbortController();
+    this.model = new ChatOllama({
+      model: "qwen3-vl:8b",
+      baseUrl: "http://127.0.0.1:11434",
+      temperature: 0.7,
+      numPredict: 1024,
+      streaming: false,
+      think: false,
+    });
   }
 
   /**
@@ -296,17 +306,13 @@ export class AgentLoop extends EventEmitter {
       };
     }
 
+    const modelWithTools = this.model.bindTools([]);
+
+    console.error("调用模型接口，输入消息:", messages);
+    const result = await modelWithTools.invoke(messages);
+
     // 模拟普通响应
-    return {
-      choices: [
-        {
-          message: {
-            content: `这是对 "${messages[messages.length - 1]?.content}" 的响应`,
-          },
-        },
-      ],
-      usage: { totalTokens: 50 },
-    };
+    return result;
   }
 
   /**
