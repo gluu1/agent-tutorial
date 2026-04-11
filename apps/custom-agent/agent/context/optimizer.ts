@@ -1,7 +1,27 @@
-// core/context/optimizer.ts - 上下文优化器
+// context/optimizer.ts - 上下文优化器
 
-import { AgentMessage, ContextConfig, ToolDefinition } from "../types";
+import { AgentMessage, ContextConfig } from "../types";
 import { ThreeTierMemoryManager } from "../memory/threeTierMemory";
+
+/**
+ * 组件分类
+ */
+type ComponentName =
+  | "systemPrompt"
+  | "skills"
+  | "userInput"
+  | "workspace"
+  | "sessionSummary"
+  | "longTerm"
+  | "history";
+
+interface ContextComponent {
+  name: ComponentName;
+  priority: number;
+  compressible: boolean;
+  messages: AgentMessage[];
+  rawContent?: string;
+}
 
 /**
  * 上下文组装器
@@ -23,128 +43,219 @@ export class ContextAssembler {
     systemPrompt?: string;
     skillsPrompt?: string;
     workspaceFiles?: Map<string, string>;
-    availableTools?: ToolDefinition[];
   }): Promise<{ messages: AgentMessage[]; tokenCount: number }> {
-    const components: Array<{
-      priority: number;
-      messages: AgentMessage[];
-      name: string;
-    }> = [];
+    const maxTokens =
+      this.config.maxContextTokens - this.config.reservedOutputTokens;
 
-    // 1. 系统提示词
+    // 1. 收集所有组件
+    const components = await this.collectComponents(params);
+
+    // 2. 计算总 token
+    const totalTokens = this.estimateTokens(
+      components.map((c) => c.messages).flat(),
+    );
+
+    // 3. 如果总 token 未超限，直接返回
+    if (totalTokens <= maxTokens) {
+      return {
+        messages: components
+          .sort((a, b) => b.priority - a.priority)
+          .map((c) => c.messages)
+          .flat(),
+        tokenCount: totalTokens,
+      };
+    }
+
+    // 4. Token 超限，按优先级压缩
+    return this.assembleWithCompression(components, maxTokens);
+  }
+
+  /**
+   * 收集所有上下文组件
+   */
+  private async collectComponents(params: {
+    userInput: string;
+    systemPrompt?: string;
+    skillsPrompt?: string;
+    workspaceFiles?: Map<string, string>;
+  }): Promise<ContextComponent[]> {
+    const components: ContextComponent[] = [];
+    const priorities = this.config.priorities;
+
+    // 不可压缩组件 - Level 1: 系统提示词
     if (params.systemPrompt) {
       components.push({
-        priority: this.config.priorities.systemPrompt,
         name: "systemPrompt",
+        priority: priorities.systemPrompt,
+        compressible: false,
         messages: [this.createMessage("system", params.systemPrompt)],
       });
     }
 
-    // 2. 会话摘要
-    const sessionSummary = this.memory.getSessionSummary();
-    if (sessionSummary) {
-      components.push({
-        priority: this.config.priorities.sessionSummary,
-        name: "sessionSummary",
-        messages: [this.createMessage("system", sessionSummary)],
-      });
-    }
-
-    // 3. Skills 说明
+    // 不可压缩组件 - Level 2: Skills
     if (params.skillsPrompt) {
       components.push({
-        priority: this.config.priorities.skills,
         name: "skills",
+        priority: priorities.skills,
+        compressible: false,
         messages: [this.createMessage("system", params.skillsPrompt)],
       });
     }
 
-    // 4. 工作区文件
+    // 可压缩组件 - Level 4: 工作区文件
     if (params.workspaceFiles && params.workspaceFiles.size > 0) {
       const workspaceContent = Array.from(params.workspaceFiles.entries())
         .map(([name, content]) => `## ${name}\n${content}`)
         .join("\n\n");
 
       components.push({
-        priority: this.config.priorities.workspaceFiles,
         name: "workspace",
+        priority: priorities.workspaceFiles,
+        compressible: true,
         messages: [this.createMessage("system", workspaceContent)],
+        rawContent: workspaceContent,
       });
     }
 
-    // 5. 可用工具说明
-    if (params.availableTools && params.availableTools.length > 0) {
-      const toolsDescription = this.formatToolsDescription(
-        params.availableTools,
-      );
+    // 可压缩组件 - Level 5: 会话摘要
+    const sessionSummary = this.memory.getSessionSummary();
+    if (sessionSummary) {
       components.push({
-        priority: this.config.priorities.systemPrompt,
-        name: "tools",
-        messages: [this.createMessage("system", toolsDescription)],
+        name: "sessionSummary",
+        priority: priorities.sessionSummary,
+        compressible: true,
+        messages: [this.createMessage("system", sessionSummary)],
+        rawContent: sessionSummary,
       });
     }
 
-    // 6. 长期记忆检索
+    // 可压缩组件 - Level 6: 长期记忆检索
     const longTermMemories = await this.memory.longTerm.retrieve(
       params.userInput,
     );
     if (longTermMemories.length > 0) {
       const memoryContent = `相关记忆:\n${longTermMemories.map((m) => `- ${m.content}`).join("\n")}`;
       components.push({
-        priority: this.config.priorities.longTermMemories,
         name: "longTerm",
+        priority: priorities.longTermMemories,
+        compressible: true,
         messages: [this.createMessage("system", memoryContent)],
+        rawContent: memoryContent,
       });
     }
 
-    // 7. 历史对话（短期记忆）
+    // 可压缩组件 - Level 7: 历史对话
     const shortTerm = this.memory.getShortTerm();
     if (shortTerm.length > 0) {
       components.push({
-        priority: this.config.priorities.recentHistory,
         name: "history",
+        priority: priorities.recentHistory,
+        compressible: true,
         messages: shortTerm,
+        rawContent: shortTerm.map((m) => m.content).join("\n"),
       });
     }
 
-    // 8. 当前用户消息
+    // 不可压缩组件 - Level 3: 用户输入
     components.push({
-      priority: 0,
-      name: "current",
+      name: "userInput",
+      priority: priorities.userInput ?? 80,
+      compressible: false,
       messages: [this.createMessage("user", params.userInput)],
     });
 
-    // 按优先级排序并组装
-    components.sort((a, b) => b.priority - a.priority);
+    return components;
+  }
 
-    let messages: AgentMessage[] = [];
+  /**
+   * 带压缩的上下文组装
+   */
+  private async assembleWithCompression(
+    components: ContextComponent[],
+    maxTokens: number,
+  ): Promise<{ messages: AgentMessage[]; tokenCount: number }> {
+    const messages: AgentMessage[] = [];
     let tokenCount = 0;
-    const maxTokens =
-      this.config.maxContextTokens - this.config.reservedOutputTokens;
 
-    for (const component of components) {
-      const componentTokens = this.estimateTokens(component.messages);
+    // Step 1: 计算不可压缩组件 token (systemPrompt + skills + userInput)
+    const nonCompressibleNames: ComponentName[] = [
+      "systemPrompt",
+      "skills",
+      "userInput",
+    ];
+    let essentialComponents = components.filter((c) =>
+      nonCompressibleNames.includes(c.name),
+    );
+    let essentialTokens = this.estimateTokens(
+      essentialComponents.map((c) => c.messages).flat(),
+    );
 
-      if (tokenCount + componentTokens > maxTokens) {
-        // 超出限制，尝试压缩
-        if (component.priority > 30) {
-          // 高优先级组件尝试压缩
-          const compressed = await this.compressComponent(
-            component,
-            maxTokens - tokenCount,
-          );
-          if (compressed) {
-            messages.push(...compressed);
-            tokenCount += this.estimateTokens(compressed);
-          }
-        }
-        // 低优先级组件直接跳过
-        continue;
+    // Step 2: 如果 essential 超限，尝试降级 - 只保留 systemPrompt + userInput
+    if (essentialTokens > maxTokens) {
+      essentialComponents = components.filter((c) =>
+        ["systemPrompt", "userInput"].includes(c.name),
+      );
+      essentialTokens = this.estimateTokens(
+        essentialComponents.map((c) => c.messages).flat(),
+      );
+
+      // Step 3: 如果还是超限，抛错
+      if (essentialTokens > maxTokens) {
+        throw new Error(
+          `Context overflow: even essential content exceeds maxTokens (${maxTokens})`,
+        );
       }
 
-      messages.push(...component.messages);
-      tokenCount += componentTokens;
+      // 只保留 systemPrompt + userInput
+      for (const comp of essentialComponents.sort(
+        (a, b) => b.priority - a.priority,
+      )) {
+        messages.push(...comp.messages);
+        tokenCount += this.estimateTokens(comp.messages);
+      }
+
+      console.warn(
+        `[ContextAssembler] Skills dropped due to context overflow`,
+      );
+      return { messages, tokenCount };
     }
+
+    // 添加不可压缩组件
+    for (const comp of essentialComponents.sort(
+      (a, b) => b.priority - a.priority,
+    )) {
+      messages.push(...comp.messages);
+      tokenCount += this.estimateTokens(comp.messages);
+    }
+
+    // Step 4: 压缩可压缩组件
+    const remaining = maxTokens - tokenCount;
+    const compressibleComponents = components
+      .filter((c) => c.compressible)
+      .sort((a, b) => b.priority - a.priority);
+
+    for (const comp of compressibleComponents) {
+      if (remaining - tokenCount <= 0) break;
+
+      const compressed = await this.compressComponent(
+        comp,
+        remaining - tokenCount,
+      );
+      if (compressed) {
+        messages.push(...compressed);
+        tokenCount += this.estimateTokens(compressed);
+      }
+    }
+
+    console.error("[ContextAssembler] assembled", {
+      totalTokens: tokenCount,
+      maxTokens,
+      components: components.map((c) => ({
+        name: c.name,
+        priority: c.priority,
+        tokens: this.estimateTokens(c.messages),
+      })),
+    });
 
     return { messages, tokenCount };
   }
@@ -153,33 +264,107 @@ export class ContextAssembler {
    * 压缩组件
    */
   private async compressComponent(
-    component: { priority: number; messages: AgentMessage[]; name: string },
+    component: ContextComponent,
     maxTokens: number,
   ): Promise<AgentMessage[] | null> {
-    if (component.name === "history") {
-      // 对话历史压缩
-      const content = component.messages.map((m) => m.content).join("\n");
-      const compressed = await this.summarize(content, maxTokens);
-      return [this.createMessage("system", `[对话历史摘要]\n${compressed}`)];
+    const currentTokens = this.estimateTokens(component.messages);
+
+    // 如果当前 token 已经小于等于限制，直接返回
+    if (currentTokens <= maxTokens) {
+      return component.messages;
     }
 
-    if (component.name === "longTerm") {
-      // 长期记忆压缩，保留最相关的
-      return component.messages.slice(0, 3);
-    }
+    switch (component.name) {
+      case "workspace":
+        // 工作区文件: 截断内容，保留文件名
+        return this.compressWorkspace(component, maxTokens);
 
-    return null;
+      case "sessionSummary":
+        // 会话摘要: 摘要压缩
+        return this.compressSummary(component, maxTokens);
+
+      case "longTerm":
+        // 长期记忆: 按相关性截断
+        return this.compressLongTerm(component, maxTokens);
+
+      case "history":
+        // 历史对话: 摘要压缩
+        return this.compressHistory(component, maxTokens);
+
+      default:
+        return null;
+    }
   }
 
   /**
-   * 格式化工具说明
+   * 压缩工作区文件 - 截断内容
    */
-  private formatToolsDescription(tools: ToolDefinition[]): string {
-    const descriptions = tools.map((tool) => {
-      return `### ${tool.name}\n${tool.description}\n参数: ${JSON.stringify(tool.parameters, null, 2)}`;
-    });
+  private compressWorkspace(
+    component: ContextComponent,
+    maxTokens: number,
+  ): AgentMessage[] {
+    const content = component.rawContent || component.messages[0].content;
+    const files = content.split("## ").filter(Boolean);
+    let result = "";
+    let currentTokens = 0;
 
-    return `# 可用工具\n\n${descriptions.join("\n\n")}`;
+    for (const file of files) {
+      const fileTokens = this.estimateToken(file);
+
+      if (currentTokens + fileTokens > maxTokens) {
+        // 如果单个文件就超限，保留文件名
+        const nameEnd = file.indexOf("\n");
+        if (nameEnd > 0) {
+          result += `## ${file.substring(0, nameEnd)}\n[内容已截断...]\n`;
+        }
+        break;
+      }
+
+      result += `## ${file}`;
+      currentTokens += fileTokens;
+    }
+
+    return [this.createMessage("system", result || "[工作区内容已压缩]")];
+  }
+
+  /**
+   * 压缩摘要
+   */
+  private compressSummary(
+    component: ContextComponent,
+    maxTokens: number,
+  ): AgentMessage[] {
+    const content = component.rawContent || component.messages[0].content;
+    const compressed = this.summarize(content, maxTokens);
+    return [
+      this.createMessage("system", `[会话摘要压缩]\n${compressed}`),
+    ];
+  }
+
+  /**
+   * 压缩长期记忆 - 截断
+   */
+  private compressLongTerm(
+    component: ContextComponent,
+    maxTokens: number,
+  ): AgentMessage[] {
+    const content = component.rawContent || component.messages[0].content;
+    const compressed = content.substring(0, Math.floor(maxTokens * 4));
+    return [this.createMessage("system", `[相关记忆已压缩]\n${compressed}`)];
+  }
+
+  /**
+   * 压缩历史对话 - 摘要
+   */
+  private compressHistory(
+    component: ContextComponent,
+    maxTokens: number,
+  ): AgentMessage[] {
+    const content = component.rawContent || component.messages[0].content;
+    const compressed = this.summarize(content, maxTokens);
+    return [
+      this.createMessage("system", `[对话历史摘要]\n${compressed}`),
+    ];
   }
 
   /**
@@ -201,16 +386,22 @@ export class ContextAssembler {
    * 估算 Token 数
    */
   private estimateTokens(messages: AgentMessage[]): number {
-    return messages.reduce((total, msg) => {
-      return total + Math.ceil(msg.content.length / 4);
-    }, 0);
+    return messages.reduce(
+      (total, msg) => total + this.estimateToken(msg.content),
+      0,
+    );
+  }
+
+  private estimateToken(content: string): number {
+    const chinese = (content.match(/[\u4e00-\u9fa5]/g) || []).length;
+    const other = content.length - chinese;
+    return chinese * 2 + other;
   }
 
   /**
    * 生成摘要
    */
-  private async summarize(content: string, maxTokens: number): Promise<string> {
-    // 简化实现
+  private summarize(content: string, maxTokens: number): string {
     if (content.length <= maxTokens * 4) {
       return content;
     }

@@ -15,8 +15,7 @@
     "@types/node": "^25.5.0",
     "events": "^3.3.0",
     "js-yaml": "^4.1.1",
-    "langchain": "link:apps/langchain",
-    "openai": "link:apps/openai",
+    "openai": "^6.25.0",
     "ws": "^8.20.0",
     "@langchain/ollama": "^1.1.0"
   }

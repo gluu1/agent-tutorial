@@ -11,7 +11,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start:openai": "pnpm --filter openai-agent start",
     "start:langchain": "pnpm --filter langchain-agent start",
-    "start:custom-agent": "pnpm --filter custom-agent start"
+    "start:custom-agent": "pnpm --filter custom-agent agent"
   },
   "keywords": [],
   "author": "",

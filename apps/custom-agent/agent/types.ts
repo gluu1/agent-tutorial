@@ -183,6 +183,7 @@ export interface ContextConfig {
     recentHistory: number;
     longTermMemories: number;
     toolResults: number;
+    userInput?: number;
   };
 }
 

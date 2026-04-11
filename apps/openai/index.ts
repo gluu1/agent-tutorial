@@ -246,7 +246,7 @@ async function handleToolCalls(response: any) {
 
     // 发送工具响应并获取最终回复
     const followUpResponse = await client.chat.completions.create({
-      model: "glm-5",
+      model: "MiniMax-M2.7",
       tools,
       messages: [
         {
@@ -275,7 +275,7 @@ async function handleToolCalls(response: any) {
 }
 
 const response = await client.chat.completions.create({
-  model: "glm-5",
+  model: "MiniMax-M2.7",
   tools,
   messages: [
     {

@@ -50,8 +50,9 @@ async function main() {
     userId: "user_001",
     modelConfig: {
       provider: "deepseek",
-      model: "deepseek-chat",
-      apiKey: process.env.DEEPSEEK_API_KEY!,
+      model: "MiniMax-M2.7",
+      baseURL: process.env.MINIMAX_BASE_URL,
+      apiKey: process.env.MINIMAX_API_KEY!,
       temperature: 0.7,
     },
     toolConfig: {},
