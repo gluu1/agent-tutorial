@@ -227,6 +227,7 @@ export class AgentLoop extends EventEmitter {
       const context = await this.contextAssembler.assemble({
         userInput,
         systemPrompt: this.config.systemPrompt,
+        rules: this.config.rules,
         skillsPrompt: await this.getSkillsPrompt(),
         workspaceFiles: await this.getWorkspaceFiles(),
       });

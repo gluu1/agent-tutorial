@@ -14,6 +14,7 @@ export interface AgentConfig {
   skillsConfig?: SkillsConfig;
   workspaceDir?: string;
   systemPrompt?: string;
+  rules?: string;
 }
 
 /**
@@ -184,6 +185,7 @@ export interface ContextConfig {
     longTermMemories: number;
     toolResults: number;
     userInput?: number;
+    rules?: number;
   };
 }
 

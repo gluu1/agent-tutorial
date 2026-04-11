@@ -8,6 +8,7 @@ import { ThreeTierMemoryManager } from "../memory/threeTierMemory";
  */
 type ComponentName =
   | "systemPrompt"
+  | "rules"
   | "skills"
   | "userInput"
   | "workspace"
@@ -41,6 +42,7 @@ export class ContextAssembler {
   async assemble(params: {
     userInput: string;
     systemPrompt?: string;
+    rules?: string;
     skillsPrompt?: string;
     workspaceFiles?: Map<string, string>;
   }): Promise<{ messages: AgentMessage[]; tokenCount: number }> {
@@ -76,6 +78,7 @@ export class ContextAssembler {
   private async collectComponents(params: {
     userInput: string;
     systemPrompt?: string;
+    rules?: string;
     skillsPrompt?: string;
     workspaceFiles?: Map<string, string>;
   }): Promise<ContextComponent[]> {
@@ -92,7 +95,18 @@ export class ContextAssembler {
       });
     }
 
-    // 不可压缩组件 - Level 2: Skills
+    // 不可压缩组件 - Level 2: Rules (优先级高于 skills，超限可丢弃)
+    if (params.rules) {
+      components.push({
+        name: "rules",
+        priority: priorities.rules ?? 95,
+        compressible: false,
+        messages: [this.createMessage("system", params.rules)],
+        rawContent: params.rules,
+      });
+    }
+
+    // 不可压缩组件 - Level 3: Skills
     if (params.skillsPrompt) {
       components.push({
         name: "skills",
@@ -169,6 +183,7 @@ export class ContextAssembler {
 
   /**
    * 带压缩的上下文组装
+   * 降级顺序: skills -> rules -> 抛错
    */
   private async assembleWithCompression(
     components: ContextComponent[],
@@ -177,47 +192,49 @@ export class ContextAssembler {
     const messages: AgentMessage[] = [];
     let tokenCount = 0;
 
-    // Step 1: 计算不可压缩组件 token (systemPrompt + skills + userInput)
-    const nonCompressibleNames: ComponentName[] = [
+    // Step 1: 尝试 systemPrompt + rules + skills + userInput
+    let essentialNames: ComponentName[] = [
       "systemPrompt",
+      "rules",
       "skills",
       "userInput",
     ];
     let essentialComponents = components.filter((c) =>
-      nonCompressibleNames.includes(c.name),
+      essentialNames.includes(c.name),
     );
     let essentialTokens = this.estimateTokens(
       essentialComponents.map((c) => c.messages).flat(),
     );
 
-    // Step 2: 如果 essential 超限，尝试降级 - 只保留 systemPrompt + userInput
+    // Step 2: 如果超限，丢弃 skills
     if (essentialTokens > maxTokens) {
+      console.warn("[ContextAssembler] Skills dropped due to context overflow");
+      essentialNames = ["systemPrompt", "rules", "userInput"];
       essentialComponents = components.filter((c) =>
-        ["systemPrompt", "userInput"].includes(c.name),
+        essentialNames.includes(c.name),
       );
       essentialTokens = this.estimateTokens(
         essentialComponents.map((c) => c.messages).flat(),
       );
+    }
 
-      // Step 3: 如果还是超限，抛错
-      if (essentialTokens > maxTokens) {
-        throw new Error(
-          `Context overflow: even essential content exceeds maxTokens (${maxTokens})`,
-        );
-      }
-
-      // 只保留 systemPrompt + userInput
-      for (const comp of essentialComponents.sort(
-        (a, b) => b.priority - a.priority,
-      )) {
-        messages.push(...comp.messages);
-        tokenCount += this.estimateTokens(comp.messages);
-      }
-
-      console.warn(
-        `[ContextAssembler] Skills dropped due to context overflow`,
+    // Step 3: 如果还是超限，丢弃 rules
+    if (essentialTokens > maxTokens) {
+      console.warn("[ContextAssembler] Rules dropped due to context overflow");
+      essentialNames = ["systemPrompt", "userInput"];
+      essentialComponents = components.filter((c) =>
+        essentialNames.includes(c.name),
       );
-      return { messages, tokenCount };
+      essentialTokens = this.estimateTokens(
+        essentialComponents.map((c) => c.messages).flat(),
+      );
+    }
+
+    // Step 4: 如果还是超限，抛错
+    if (essentialTokens > maxTokens) {
+      throw new Error(
+        `Context overflow: even essential content exceeds maxTokens (${maxTokens})`,
+      );
     }
 
     // 添加不可压缩组件

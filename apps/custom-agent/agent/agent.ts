@@ -377,10 +377,11 @@ export class Agent extends EventEmitter {
       assemblyStrategy: "prioritized" as const,
       priorities: {
         systemPrompt: 100,      // 最高优先级 - 永不压缩
-        skills: 90,             // 高优先级 - 永不压缩
-        userInput: 80,         // 用户输入 - 永不压缩
-        workspaceFiles: 50,    // 可压缩
-        sessionSummary: 40,    // 可压缩
+        rules: 95,              // 高优先级 - 超限可丢弃
+        skills: 90,             // 高优先级 - 超限可丢弃
+        userInput: 80,           // 用户输入 - 永不压缩
+        workspaceFiles: 50,     // 可压缩
+        sessionSummary: 40,     // 可压缩
         longTermMemories: 30,   // 可压缩
         recentHistory: 20,      // 可压缩
         toolResults: 10,        // 可压缩
