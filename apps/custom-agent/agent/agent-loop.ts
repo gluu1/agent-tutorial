@@ -213,7 +213,7 @@ export class AgentLoop extends EventEmitter {
     const maxIterations = this.config.loopConfig?.maxIterations ?? 10;
 
     // 插件钩子：循环开始前
-    await this.pluginManager?.callHook("onBeforeLoop", userInput, this.config);
+    await this.pluginManager?.callHook("onBeforeLoop", this, userInput);
 
     while (this.isRunning && iteration < maxIterations) {
       this.currentIteration = ++iteration;

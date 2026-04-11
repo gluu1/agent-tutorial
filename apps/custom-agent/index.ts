@@ -49,7 +49,7 @@ async function main() {
     sessionId: `session_${Date.now()}`,
     userId: "user_001",
     modelConfig: {
-      provider: "deepseek",
+      provider: "minimax",
       model: "MiniMax-M2.7",
       baseURL: process.env.MINIMAX_BASE_URL,
       apiKey: process.env.MINIMAX_API_KEY!,

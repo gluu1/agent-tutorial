@@ -71,6 +71,7 @@ export class Agent extends EventEmitter {
       this.memory,
       this.toolExecutor,
       this.contextAssembler,
+      this.pluginManager,
     );
   }
 

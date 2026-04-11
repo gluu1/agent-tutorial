@@ -23,7 +23,7 @@ export interface AgentConfig {
 export interface ModelConfig {
   // ========== 核心参数 ==========
 
-  provider: "openai" | "anthropic" | "deepseek" | "custom";
+  provider: "openai" | "anthropic" | "deepseek" | "minimax" | "custom";
   model: string;
   apiKey: string;
   baseURL?: string;
