@@ -177,9 +177,10 @@ export class AgentLoop extends EventEmitter {
 
       const errorMessage =
         error instanceof Error ? error.message : String(error);
+      console.error("[AgentLoop] 循环错误:", error);
 
       // 插件钩子：错误处理
-      await this.pluginManager?.callHook("onError", error, this.config);
+      await this.pluginManager?.callHook("onError", error);
 
       this.emitEvent("error", { error: errorMessage });
 
@@ -491,16 +492,43 @@ export class AgentLoop extends EventEmitter {
       // 获取工具定义
       const toolDefinitions = this.toolExecutor.getDefinitions();
 
+      // 转换消息格式，OpenAI API 需要 tool_call_id 和 tool_calls
+      const openAIMessages: ChatCompletionMessageParam[] = messages.map((item) => {
+        if (item.role === "tool") {
+          return {
+            role: "tool" as const,
+            tool_call_id: item.toolCallId,
+            content: item.content,
+          };
+        }
+        if (item.role === "assistant" && item.toolCalls && item.toolCalls.length > 0) {
+          return {
+            role: "assistant" as const,
+            content: item.content || null,
+            tool_calls: item.toolCalls.map((tc) => ({
+              id: tc.id,
+              type: "function" as const,
+              function: {
+                name: tc.function.name,
+                arguments: tc.function.arguments,
+              },
+            })),
+          };
+        }
+        return {
+          role: item.role as "system" | "user" | "assistant",
+          content: item.content,
+        };
+      });
+
       const response = await this.model.chat.completions.create({
         model: "MiniMax-M2.7",
         tools: toolDefinitions.length > 0 ? toolDefinitions : undefined,
-        messages: messages.map((item) => ({
-          role: item.role,
-          content: item.content,
-        })) as ChatCompletionMessageParam[],
+        messages: openAIMessages,
         top_p: 0.7,
         temperature: 0.9,
       });
+
 
       // 转换为标准响应格式
       return this.transformToModelResponse(response);
@@ -534,6 +562,12 @@ export class AgentLoop extends EventEmitter {
 
     // 标准 OpenAI 格式
     if (rawResponse?.choices) {
+      // 规范化 tool_calls -> toolCalls (OpenAI API 使用下划线，代码使用驼峰)
+      const message = rawResponse.choices[0]?.message;
+      if (message?.tool_calls) {
+        rawResponse.choices[0].message.toolCalls = message.tool_calls;
+        delete message.tool_calls;
+      }
       return rawResponse;
     }
 
