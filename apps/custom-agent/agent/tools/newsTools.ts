@@ -476,6 +476,113 @@ const newsGetItemTool: ToolDefinition = {
 };
 
 /**
+ * 尝试从字符串中提取 JSON 数组
+ */
+function extractJsonArray(text: string): any[] | null {
+  // 尝试找到 JSON 数组开始和结束的位置
+  const arrayStart = text.indexOf("[");
+  const arrayEnd = text.lastIndexOf("]");
+
+  if (arrayStart !== -1 && arrayEnd !== -1 && arrayEnd > arrayStart) {
+    const arrayStr = text.substring(arrayStart, arrayEnd + 1);
+    try {
+      return JSON.parse(arrayStr);
+    } catch {
+      // 尝试修复常见的 JSON 问题
+      try {
+        const fixed = fixJson(arrayStr);
+        return JSON.parse(fixed);
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * 修复常见的 JSON 格式问题
+ */
+function fixJson(jsonStr: string): string {
+  let fixed = jsonStr;
+
+  // 移除单行注释
+  fixed = fixed.replace(/\/\/.*$/gm, "");
+
+  // 移除多行注释
+  fixed = fixed.replace(/\/\*[\s\S]*?\*\//g, "");
+
+  // 处理重复的键（保留最后一个）- 这是造成解析失败的主要原因
+  // 简单策略：找到重复的键值对，移除前面的
+  const lines = fixed.split("\n");
+  const keyPositions = new Map<string, number[]>();
+  const resultLines: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const keyMatch = line.match(/^\s*"([^"]+)"\s*:/);
+    if (keyMatch) {
+      const key = keyMatch[1];
+      const positions = keyPositions.get(key) || [];
+      positions.push(i);
+      keyPositions.set(key, positions);
+    }
+    resultLines.push(line);
+  }
+
+  // 对于有重复的键，移除除最后一个外的所有出现
+  for (const positions of keyPositions.values()) {
+    if (positions.length > 1) {
+      // 保留最后一个，移除前面的
+      for (let i = 0; i < positions.length - 1; i++) {
+        resultLines[positions[i]] = null;
+      }
+    }
+  }
+
+  fixed = resultLines.filter(l => l !== null).join("\n");
+
+  return fixed;
+}
+
+/**
+ * 安全解析 JSON，处理格式问题
+ */
+function safeJsonParse(text: string): any | null {
+  // 首先尝试标准解析
+  try {
+    return JSON.parse(text);
+  } catch {
+    // 失败，尝试提取并修复
+  }
+
+  // 尝试提取 JSON 数组
+  const arrayResult = extractJsonArray(text);
+  if (arrayResult !== null) {
+    return arrayResult;
+  }
+
+  // 尝试提取 JSON 对象
+  const objectStart = text.indexOf("{");
+  const objectEnd = text.lastIndexOf("}");
+  if (objectStart !== -1 && objectEnd !== -1 && objectEnd > objectStart) {
+    const objectStr = text.substring(objectStart, objectEnd + 1);
+    try {
+      return JSON.parse(objectStr);
+    } catch {
+      try {
+        const fixed = fixJson(objectStr);
+        return JSON.parse(fixed);
+      } catch {
+        return null;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
  * 工具：分析新闻
  */
 const newsAnalyzeTool: ToolDefinition = {
@@ -505,22 +612,46 @@ const newsAnalyzeTool: ToolDefinition = {
       throw new Error("newsData 参数不能为空");
     }
 
-    let newsItems: NewsSearchResult[];
-    try {
-      const parsed = JSON.parse(params.newsData);
-      newsItems = parsed.新闻列表 || parsed.stories || parsed;
-    } catch {
-      throw new Error("newsData 格式无效 - 必须是有效的 JSON");
+    let newsItems: NewsSearchResult[] = [];
+    const parsed = safeJsonParse(params.newsData);
+
+    if (parsed === null) {
+      throw new Error("newsData 格式无效：无法解析 JSON，请确保传入原始 JSON 数据而非格式化后的文本");
     }
 
-    if (!Array.isArray(newsItems) || newsItems.length === 0) {
-      return { 错误: "没有可分析的新闻" };
+    // 尝试多种数据格式
+    if (Array.isArray(parsed)) {
+      newsItems = parsed;
+    } else if (parsed.新闻列表 && Array.isArray(parsed.新闻列表)) {
+      newsItems = parsed.新闻列表;
+    } else if (parsed.stories && Array.isArray(parsed.stories)) {
+      newsItems = parsed.stories;
+    } else if (parsed.results && Array.isArray(parsed.results)) {
+      newsItems = parsed.results;
+    }
+
+    // 如果仍然是空，尝试提取数组属性
+    if (newsItems.length === 0) {
+      const arrayProp = Object.values(parsed).find(v => Array.isArray(v));
+      if (arrayProp) {
+        newsItems = arrayProp as NewsSearchResult[];
+      }
+    }
+
+    // 清理无效条目
+    newsItems = newsItems.filter(item => item && (item.title || item.url));
+
+    if (newsItems.length === 0) {
+      return { 错误: "没有可分析的新闻数据" };
     }
 
     const focus = params.focus || "overview";
 
-    // 合并所有标题
-    const allText = newsItems.map((i) => `${i.title}`).join(" ");
+    // 合并所有标题（确保 title 存在）
+    const allText = newsItems
+      .map((i) => i.title || i.url || "")
+      .filter(Boolean)
+      .join(" ");
 
     // 生成分析
     const analysis: NewsAnalysis = {

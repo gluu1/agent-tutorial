@@ -3,7 +3,6 @@
 import { AgentConfig } from "./agent/types";
 import { Agent } from "./agent/agent";
 import { BasePlugin, PluginMetadata } from "./agent/plugins/types";
-import { loadNewsTools } from "./agent/tools/newsTools";
 
 // 1. 自定义插件（使用 BasePlugin 简化）
 class CustomLoggerPlugin extends BasePlugin {
@@ -66,6 +65,12 @@ async function main() {
 - news_get_item: 获取单条新闻详情
 - news_analyze: 分析新闻内容
 
+重要：news_analyze 工具需要接收新闻数据作为 newsData 参数。
+使用流程：
+1. 先调用 news_get_top_stories 或 news_search 获取新闻列表
+2. 将上一步获取的新闻列表（整个 JSON 结果）作为 newsData 参数传给 news_analyze
+3. newsData 必须是有效的 JSON 字符串
+
 不要凭空编造新闻数据，必须先调用工具获取真实数据。`,
   };
 
@@ -88,11 +93,6 @@ async function main() {
 
   // 初始化
   await agent.init();
-
-  // 注册新闻工具
-  const newsTools = loadNewsTools();
-  agent.getToolExecutor().registerAll(newsTools);
-  console.log(`已注册 ${newsTools.length} 个新闻工具`);
 
   // 运行
   const result = await agent.invoke("帮我分析今天的新闻");

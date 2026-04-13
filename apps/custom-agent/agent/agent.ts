@@ -305,7 +305,28 @@ export class Agent extends EventEmitter {
       this.toolExecutor.registerAll(workspaceTools);
     }
 
+    // 4. 自动加载内置工具（newsTools 等）
+    await this.loadBuiltinAgentTools();
+
     console.log(`Registered ${this.toolExecutor.listTools().length} tools`);
+  }
+
+  /**
+   * 加载内置 Agent 工具
+   */
+  private async loadBuiltinAgentTools(): Promise<void> {
+    try {
+      // 动态导入内置工具模块
+      const newsTools = await import("./tools/newsTools");
+      if (newsTools.loadNewsTools) {
+        const tools = newsTools.loadNewsTools();
+        this.toolExecutor.registerAll(tools);
+        console.log(`Loaded ${tools.length} builtin agent tools`);
+      }
+    } catch (error) {
+      // 工具加载失败不影响主流程
+      console.warn("Failed to load builtin agent tools:", error);
+    }
   }
 
   /**
