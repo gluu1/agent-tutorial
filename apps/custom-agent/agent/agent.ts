@@ -26,8 +26,8 @@ import { Plugin } from "./plugins/types";
 /**
  * Agent 主类
  * 负责组装所有组件，管理生命周期，支持插件系统
+ * 采用事件驱动架构，便于监控和扩展
  */
-
 export class Agent extends EventEmitter {
   private config: AgentConfig;
   private memory: ThreeTierMemoryManager;
@@ -77,35 +77,25 @@ export class Agent extends EventEmitter {
 
   /**
    * 初始化 Agent
+   * 按顺序初始化各组件，确保依赖关系正确
    */
   async init(): Promise<void> {
     console.log(`Initializing Agent: ${this.config.sessionId}`);
 
-    // 1. 加载工作区文件
+    // 工作区文件需要在其他组件之前加载，因为可能被引用
     await this.loadWorkspaceFiles();
-
-    // 2. 初始化 Skills
     await this.skillsManager.init();
-
-    // 3. 注册工具
     await this.registerTools();
-
-    // 4. 初始化插件
     await this.initPlugins();
-    // 4. 初始化插件管理器（这会触发所有插件的 onInit）
+
+    // 插件系统需要最后初始化，确保其他组件都就绪
     await this.pluginManager.init(this.config);
 
-    // 5. 设置记忆的摘要函数
-    this.memory.setSummarizeFn(async (messages) => {
-      return this.generateSummary(messages);
-    });
+    // 配置回调函数
+    this.memory.setSummarizeFn(this.generateSummary.bind(this));
+    this.toolExecutor.setConfirmationHandler(this.handleToolConfirmation.bind(this));
 
-    // 6. 设置工具确认处理器
-    this.toolExecutor.setConfirmationHandler(async (tool, params) => {
-      return this.handleToolConfirmation(tool, params);
-    });
-
-    // 7. 设置循环事件转发
+    // 事件转发到 Agent 级别，供外部监控
     this.agentLoop.on("event", (event: AgentEvent) => {
       this.emit("agent_event", event);
     });
@@ -115,6 +105,7 @@ export class Agent extends EventEmitter {
 
   /**
    * 运行 Agent
+   * 支持并发调用的锁机制，防止状态混乱
    */
   async invoke(input: string): Promise<AgentResult> {
     if (this.isRunning) {
@@ -124,39 +115,26 @@ export class Agent extends EventEmitter {
     this.isRunning = true;
     this.emit("start", { input, sessionId: this.config.sessionId });
 
-    // 插件：用户输入预处理
     const processedInput = await this.pluginManager.callInterceptHook(
       "onUserInput",
       input,
     );
 
     try {
-      // 插件：循环开始前
-      await this.pluginManager.callHook(
-        "onBeforeLoop",
-        this.agentLoop,
-        processedInput,
-      );
+      await this.pluginManager.callHook("onBeforeLoop", this.agentLoop, processedInput);
 
-      // 执行循环
-      const result = await this.agentLoop.run(input);
+      const result = await this.agentLoop.run(processedInput);
 
-      // 插件：循环结束后
       await this.pluginManager.callHook("onAfterLoop", this.agentLoop, result);
 
-      // 存储到长期记忆（重要结果）
+      // 成功的回答存入长期记忆，用于后续检索
       if (result.success && result.answer) {
-        await this.memory.longTerm.store(
-          result.answer,
-          this.config.sessionId,
-          0.8,
-        );
+        await this.memory.longTerm.store(result.answer, this.config.sessionId, 0.8);
       }
 
       this.emit("complete", result);
       return result;
     } catch (error) {
-      // 插件：错误处理
       await this.pluginManager.callHook("onError", error);
       this.emit("error", error);
       throw error;
@@ -179,7 +157,7 @@ export class Agent extends EventEmitter {
   /**
    * 注册插件
    */
-  registerPlugin(plugin: Plugin, config?: any): void {
+  registerPlugin(plugin: Plugin, config?: Record<string, unknown>): void {
     this.pluginManager.register(plugin, config);
     console.log(
       `Plugin registered: ${plugin.metadata.name} v${plugin.metadata.version}`,
@@ -189,7 +167,7 @@ export class Agent extends EventEmitter {
   /**
    * 批量注册插件
    */
-  registerPlugins(plugins: [Plugin], config?: any): void {
+  registerPlugins(plugins: Plugin[]): void {
     this.pluginManager.registerAll(plugins);
   }
   /**
@@ -247,7 +225,11 @@ export class Agent extends EventEmitter {
   getStatus(): {
     sessionId: string;
     isRunning: boolean;
-    memoryStats: any;
+    memoryStats: {
+      shortTerm: number;
+      sessionSummary: number;
+      longTerm: string;
+    };
     toolCount: number;
     skillCount: number;
   } {
@@ -266,6 +248,7 @@ export class Agent extends EventEmitter {
 
   /**
    * 加载工作区文件
+   * 这些文件定义 Agent 的行为规则和记忆
    */
   private async loadWorkspaceFiles(): Promise<void> {
     if (!this.config.workspaceDir) return;
@@ -278,8 +261,8 @@ export class Agent extends EventEmitter {
         const content = await fs.promises.readFile(filePath, "utf-8");
         this.workspaceFiles.set(file, content);
         console.log(`Loaded workspace file: ${file}`);
-      } catch (error) {
-        // 文件不存在，跳过
+      } catch {
+        // 文件不存在是正常的，跳过即可
       }
     }
   }
@@ -313,10 +296,10 @@ export class Agent extends EventEmitter {
 
   /**
    * 加载内置 Agent 工具
+   * 使用动态导入，按需加载不影响主流程
    */
   private async loadBuiltinAgentTools(): Promise<void> {
     try {
-      // 动态导入内置工具模块
       const newsTools = await import("./tools/newsTools");
       if (newsTools.loadNewsTools) {
         const tools = newsTools.loadNewsTools();
@@ -324,7 +307,6 @@ export class Agent extends EventEmitter {
         console.log(`Loaded ${tools.length} builtin agent tools`);
       }
     } catch (error) {
-      // 工具加载失败不影响主流程
       console.warn("Failed to load builtin agent tools:", error);
     }
   }
@@ -356,21 +338,33 @@ export class Agent extends EventEmitter {
 
   /**
    * 处理工具确认
+   * 默认拒绝危险操作，需要外部设置确认处理器
    */
   private async handleToolConfirmation(
     tool: ToolDefinition,
-    params: any,
+    params: Record<string, unknown>,
   ): Promise<boolean> {
     this.emit("tool_confirmation", { tool, params });
-    // 默认拒绝，需要外部设置确认处理器
     return false;
   }
 
   /**
    * 合并配置
+   * 提供合理的默认值，便于用户仅配置需要的部分
    */
   private mergeConfig(config: AgentConfig): AgentConfig {
-    const defaultMemoryConfig = {
+    return {
+      ...config,
+      memoryConfig: { ...this.getDefaultMemoryConfig(), ...config.memoryConfig },
+      contextConfig: { ...this.getDefaultContextConfig(), ...config.contextConfig },
+      toolConfig: { ...this.getDefaultToolConfig(), ...config.toolConfig },
+      loopConfig: { ...this.getDefaultLoopConfig(), ...config.loopConfig },
+      skillsConfig: { ...this.getDefaultSkillsConfig(), ...config.skillsConfig },
+    };
+  }
+
+  private getDefaultMemoryConfig(): NonNullable<AgentConfig["memoryConfig"]> {
+    return {
       shortTerm: {
         maxMessages: 50,
         maxTokens: 8000,
@@ -392,25 +386,29 @@ export class Agent extends EventEmitter {
         autoSummarize: true,
       },
     };
+  }
 
-    const defaultContextConfig = {
+  private getDefaultContextConfig(): NonNullable<AgentConfig["contextConfig"]> {
+    return {
       maxContextTokens: 64000,
       reservedOutputTokens: 4096,
       assemblyStrategy: "prioritized" as const,
       priorities: {
-        systemPrompt: 100,      // 最高优先级 - 永不压缩
-        rules: 95,              // 高优先级 - 超限可丢弃
-        skills: 90,             // 高优先级 - 超限可丢弃
-        userInput: 80,           // 用户输入 - 永不压缩
-        workspaceFiles: 50,     // 可压缩
-        sessionSummary: 40,     // 可压缩
-        longTermMemories: 30,   // 可压缩
-        recentHistory: 20,      // 可压缩
-        toolResults: 10,        // 可压缩
+        systemPrompt: 100,
+        rules: 95,
+        skills: 90,
+        userInput: 80,
+        workspaceFiles: 50,
+        sessionSummary: 40,
+        longTermMemories: 30,
+        recentHistory: 20,
+        toolResults: 10,
       },
     };
+  }
 
-    const defaultToolConfig = {
+  private getDefaultToolConfig(): NonNullable<AgentConfig["toolConfig"]> {
+    return {
       autoLoadWorkspaceTools: true,
       toolPaths: ["./skills", "./tools"],
       toolTimeoutMs: 30000,
@@ -420,8 +418,10 @@ export class Agent extends EventEmitter {
       dangerousTools: ["delete", "exec", "rm"],
       blockedTools: [],
     };
+  }
 
-    const defaultLoopConfig = {
+  private getDefaultLoopConfig(): NonNullable<AgentConfig["loopConfig"]> {
+    return {
       maxIterations: 15,
       maxToolCallsPerIteration: 5,
       timeoutMs: 120000,
@@ -430,23 +430,16 @@ export class Agent extends EventEmitter {
       requireConfirmation: "dangerous" as const,
       streamOutput: true,
     };
+  }
 
-    const defaultSkillsConfig = {
+  private getDefaultSkillsConfig(): NonNullable<AgentConfig["skillsConfig"]> {
+    return {
       enabled: true,
       skillsPath: process.cwd() || "./skills",
       autoLoad: true,
       watchChanges: false,
       allowedSkills: [],
       blockedSkills: [],
-    };
-
-    return {
-      ...config,
-      memoryConfig: { ...defaultMemoryConfig, ...config.memoryConfig },
-      contextConfig: { ...defaultContextConfig, ...config.contextConfig },
-      toolConfig: { ...defaultToolConfig, ...config.toolConfig },
-      loopConfig: { ...defaultLoopConfig, ...config.loopConfig },
-      skillsConfig: { ...defaultSkillsConfig, ...config.skillsConfig },
     };
   }
 
