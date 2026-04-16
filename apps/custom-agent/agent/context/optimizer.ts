@@ -14,6 +14,7 @@ type ComponentName =
   | "userInput"
   | "workspace"
   | "sessionSummary"
+  | "knowledgeBase"
   | "longTerm"
   | "history";
 
@@ -159,7 +160,7 @@ export class ContextAssembler {
       if (kbResults.length > 0) {
         const kbContent = this.knowledgeBaseManager.formatAsContext(kbResults);
         components.push({
-          name: "sessionSummary",
+          name: "knowledgeBase",
           priority: 85, // 高于 sessionSummary
           compressible: false,
           messages: [this.createMessage("system", kbContent)],
