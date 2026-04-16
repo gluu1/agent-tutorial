@@ -12,11 +12,15 @@
   "license": "ISC",
   "packageManager": "pnpm@10.24.0",
   "dependencies": {
+    "@langchain/ollama": "^1.1.0",
     "@types/node": "^25.5.0",
+    "better-sqlite3": "^12.9.0",
     "events": "^3.3.0",
     "js-yaml": "^4.1.1",
     "openai": "^6.25.0",
-    "ws": "^8.20.0",
-    "@langchain/ollama": "^1.1.0"
+    "ws": "^8.20.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13"
   }
 }
