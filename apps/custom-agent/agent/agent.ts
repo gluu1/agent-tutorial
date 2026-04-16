@@ -61,19 +61,10 @@ export class Agent extends EventEmitter {
     // 初始化工具执行器
     this.toolExecutor = new ToolExecutor(this.config.toolConfig as ToolConfig);
 
-    // 初始化上下文组件
+    // 初始化上下文组件（无知识库，init 后会更新）
     this.contextAssembler = new ContextAssembler(
       this.config.contextConfig as ContextConfig,
       this.memory,
-    );
-
-    // 初始化 Agent 循环
-    this.agentLoop = new AgentLoop(
-      this.config,
-      this.memory,
-      this.toolExecutor,
-      this.contextAssembler,
-      this.pluginManager,
     );
   }
 
@@ -93,6 +84,15 @@ export class Agent extends EventEmitter {
 
     // 插件系统需要最后初始化，确保其他组件都就绪
     await this.pluginManager.init(this.config);
+
+    // 创建 Agent 循环（此时知识库已就绪）
+    this.agentLoop = new AgentLoop(
+      this.config,
+      this.memory,
+      this.toolExecutor,
+      this.contextAssembler,
+      this.pluginManager,
+    );
 
     // 配置回调函数
     this.memory.setSummarizeFn(this.generateSummary.bind(this));
@@ -320,6 +320,10 @@ export class Agent extends EventEmitter {
       if (this.config.knowledgeBaseConfig.autoIndex !== false) {
         await this.knowledgeBaseManager.indexDirectory();
       }
+
+      // 注入知识库管理器到上下文组装器
+      this.contextAssembler.setKnowledgeBaseManager(this.knowledgeBaseManager);
+
       console.log("Knowledge base initialized");
     } catch (error) {
       console.warn("Failed to initialize knowledge base:", error);

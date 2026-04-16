@@ -45,6 +45,13 @@ export class ContextAssembler {
   }
 
   /**
+   * 设置知识库管理器（init 后调用）
+   */
+  setKnowledgeBaseManager(manager: KnowledgeBaseManager): void {
+    this.knowledgeBaseManager = manager;
+  }
+
+  /**
    * 组装完整上下文
    */
   async assemble(params: {
