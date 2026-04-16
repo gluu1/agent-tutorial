@@ -65,7 +65,7 @@ export class HierarchicalChunker {
 	/**
 	 * 按段落递归拆分
 	 */
-	private splitByParagraphs(
+	splitByParagraphs(
 		content: string,
 		docId: string,
 		titlePath: string,
@@ -98,8 +98,19 @@ export class HierarchicalChunker {
 						tokenCount: this.estimateTokens(currentChunk.trim()),
 					});
 				}
-
-				currentChunk = para + "\n\n";
+				// 如果单个段落就超限，递归按句子拆分
+				if (paraTokens > this.maxChunkTokens) {
+					const subChunks = this.splitBySentences(
+						para,
+						docId,
+						titlePath,
+						headingLevel,
+						currentStartLine,
+					);
+					chunks.push(...subChunks);
+				} else {
+					currentChunk = para + "\n\n";
+				}
 				currentStartLine = startLine + currentLines;
 				currentLines = paraLines;
 			}
@@ -124,18 +135,69 @@ export class HierarchicalChunker {
 	/**
 	 * 估算 token 数量
 	 */
-	private estimateTokens(text: string): number {
+	estimateTokens(text: string): number {
 		const chinese = (text.match(/[\u4e00-\u9fa5]/g) || []).length;
 		const english = (text.match(/[a-zA-Z]/g) || []).length;
 		return chinese * 2 + english / 4;
 	}
 
-	private getDocId(filePath: string): string {
+	getDocId(filePath: string): string {
 		const filename = filePath.split(/[/\\]/).pop() || filePath;
 		return filename.replace(/\.md$/, "");
 	}
 
-	private generateId(): string {
+	generateId(): string {
 		return `chunk_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+	}
+
+	/**
+	 * 按句子递归拆分
+	 */
+	private splitBySentences(
+		content: string,
+		docId: string,
+		titlePath: string,
+		headingLevel: number,
+		startLine: number,
+	): Chunk[] {
+		const sentences = content.split(/(?<=[。！？.!?])/);
+		let currentChunk = "";
+		let currentStartLine = startLine;
+		const chunks: Chunk[] = [];
+
+		for (const sentence of sentences) {
+			const sentenceTokens = this.estimateTokens(sentence);
+			if (this.estimateTokens(currentChunk) + sentenceTokens <= this.maxChunkTokens) {
+				currentChunk += sentence;
+			} else {
+				if (currentChunk.trim()) {
+					chunks.push({
+						id: this.generateId(),
+						docId,
+						titlePath,
+						content: currentChunk.trim(),
+						headingLevel,
+						startLine: currentStartLine,
+						tokenCount: this.estimateTokens(currentChunk.trim()),
+					});
+				}
+				currentChunk = sentence;
+				currentStartLine += currentChunk.split("\n").length;
+			}
+		}
+
+		if (currentChunk.trim()) {
+			chunks.push({
+				id: this.generateId(),
+				docId,
+				titlePath,
+				content: currentChunk.trim(),
+				headingLevel,
+				startLine: currentStartLine,
+				tokenCount: this.estimateTokens(currentChunk.trim()),
+			});
+		}
+
+		return chunks;
 	}
 }
