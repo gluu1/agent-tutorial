@@ -170,6 +170,20 @@ export interface SessionMemoryConfig {
 }
 
 /**
+ * 知识库配置
+ */
+export interface KnowledgeBaseConfig {
+  enabled: boolean;
+  docsPath: string; // 文档目录，如 "docs/"
+  dbPath: string; // SQLite 路径，如 "data/knowledge.db"
+  embeddingApiKey?: string; // 嵌入 API Key，不填则用 modelConfig 的
+  embeddingBaseURL?: string;
+  chunkTokenLimit: number; // 默认 800
+  retrievalTopK: number; // 默认 5
+  minScore: number; // 默认 0.6
+}
+
+/**
  * 上下文配置
  */
 export interface ContextConfig {
