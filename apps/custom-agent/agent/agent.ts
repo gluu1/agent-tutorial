@@ -313,6 +313,7 @@ export class Agent extends EventEmitter {
         this.config.knowledgeBaseConfig.dbPath,
         this.config.knowledgeBaseConfig.embeddingApiKey || this.config.modelConfig.apiKey,
         this.config.knowledgeBaseConfig.chunkTokenLimit || 800,
+        this.config.knowledgeBaseConfig.embeddingBaseURL,
       );
       await this.knowledgeBaseManager.initialize();
 

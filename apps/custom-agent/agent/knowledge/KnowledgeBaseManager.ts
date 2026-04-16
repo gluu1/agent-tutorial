@@ -24,12 +24,13 @@ export class KnowledgeBaseManager {
 		dbPath: string,
 		embeddingApiKey: string,
 		maxChunkTokens: number = 800,
+		embeddingBaseURL?: string,
 	) {
 		this.docsPath = docsPath;
 		this.dbPath = dbPath;
 		this.vectorStore = new VectorStore(dbPath);
 		this.chunker = new HierarchicalChunker(maxChunkTokens);
-		this.embeddingService = new EmbeddingService(embeddingApiKey);
+		this.embeddingService = new EmbeddingService(embeddingApiKey, embeddingBaseURL);
 		this.processor = new DocumentProcessor();
 	}
 
