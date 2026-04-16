@@ -173,7 +173,6 @@ export class HierarchicalChunker {
 
 			if (this.estimateTokens(currentChunk) + sentenceTokens <= this.maxChunkTokens) {
 				currentChunk += sentence;
-				currentStartLine += sentenceLines;
 			} else {
 				if (currentChunk.trim()) {
 					chunks.push({
