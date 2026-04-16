@@ -15,6 +15,7 @@ export interface AgentConfig {
   workspaceDir?: string;
   systemPrompt?: string;
   rules?: string;
+  knowledgeBaseConfig?: Partial<KnowledgeBaseConfig>;
 }
 
 /**

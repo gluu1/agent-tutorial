@@ -22,6 +22,7 @@ import { ToolExecutor, ToolLoader } from "./tools/registry";
 import { AgentLoop } from "./agent-loop";
 import { PluginManager } from "./plugins/manager";
 import { Plugin } from "./plugins/types";
+import { KnowledgeBaseManager } from "./knowledge";
 
 /**
  * Agent 主类
@@ -39,6 +40,7 @@ export class Agent extends EventEmitter {
   private pluginManager: PluginManager;
   private workspaceFiles: Map<string, string> = new Map();
   private isRunning: boolean = false;
+  private knowledgeBaseManager?: KnowledgeBaseManager;
 
   constructor(config: AgentConfig) {
     super();
@@ -86,6 +88,7 @@ export class Agent extends EventEmitter {
     await this.loadWorkspaceFiles();
     await this.skillsManager.init();
     await this.registerTools();
+    await this.initKnowledgeBase();
     await this.initPlugins();
 
     // 插件系统需要最后初始化，确保其他组件都就绪
@@ -232,6 +235,7 @@ export class Agent extends EventEmitter {
     };
     toolCount: number;
     skillCount: number;
+    knowledgeBaseEnabled: boolean;
   } {
     return {
       sessionId: this.config.sessionId,
@@ -243,6 +247,7 @@ export class Agent extends EventEmitter {
       },
       toolCount: this.toolExecutor.listTools().length,
       skillCount: this.skillsManager.getAllSkills().length,
+      knowledgeBaseEnabled: !!this.knowledgeBaseManager,
     };
   }
 
@@ -292,6 +297,39 @@ export class Agent extends EventEmitter {
     await this.loadBuiltinAgentTools();
 
     console.log(`Registered ${this.toolExecutor.listTools().length} tools`);
+  }
+
+  /**
+   * 初始化知识库
+   */
+  private async initKnowledgeBase(): Promise<void> {
+    if (!this.config.knowledgeBaseConfig?.enabled) {
+      return;
+    }
+
+    try {
+      this.knowledgeBaseManager = new KnowledgeBaseManager(
+        this.config.knowledgeBaseConfig.docsPath,
+        this.config.knowledgeBaseConfig.dbPath,
+        this.config.knowledgeBaseConfig.embeddingApiKey || this.config.modelConfig.apiKey,
+        this.config.knowledgeBaseConfig.chunkTokenLimit || 800,
+      );
+      await this.knowledgeBaseManager.initialize();
+
+      if (this.config.knowledgeBaseConfig.autoIndex !== false) {
+        await this.knowledgeBaseManager.indexDirectory();
+      }
+      console.log("Knowledge base initialized");
+    } catch (error) {
+      console.warn("Failed to initialize knowledge base:", error);
+    }
+  }
+
+  /**
+   * 获取知识库管理器
+   */
+  getKnowledgeBaseManager(): KnowledgeBaseManager | undefined {
+    return this.knowledgeBaseManager;
   }
 
   /**
@@ -454,6 +492,11 @@ export class Agent extends EventEmitter {
       if (plugin.onDestroy) {
         await plugin.onDestroy();
       }
+    }
+
+    // 关闭知识库
+    if (this.knowledgeBaseManager) {
+      this.knowledgeBaseManager.close();
     }
 
     this.skillsManager.shutdown();
