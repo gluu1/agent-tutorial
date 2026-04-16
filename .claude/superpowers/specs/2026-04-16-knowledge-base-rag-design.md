@@ -281,9 +281,42 @@ interface KnowledgeBaseManager {
 
 流程：接收上传的 Markdown/TXT → 走相同分块 → 嵌入 → 存储到同一 SQLite。
 
+## 验收标准
+
+### 功能验收
+
+- [ ] `DocumentProcessor` 能解析 `docs/*.md` 并提取 `# ## ###` 标题层级
+- [ ] `HierarchicalChunker` 按 `##` 分块，单块不超过 800 tokens
+- [ ] `EmbeddingService` 能调用 MiniMax 嵌入 API 并返回 1536 维向量
+- [ ] `VectorStore` SQLite 能存储/检索 chunks 和 embeddings
+- [ ] `KnowledgeBaseManager.indexDirectory()` 能全量索引 `docs/`
+- [ ] `KnowledgeBaseManager.retrieve()` 能返回相关文本块
+
+### 集成验收
+
+- [ ] `retrieveKnowledge` 工具能正常注册并被 Agent 调用
+- [ ] ContextAssembler 能在 session 初始化时预注入 Top-3 检索结果
+- [ ] 索引后重启程序，SQLite 数据不丢失
+
+### 端到端验收
+
+- [ ] 索引命令运行成功，无报错
+- [ ] Agent 能正确回答基于 `docs/` 内容的知识性问题
+
 ## 依赖
 
 | 依赖 | 用途 |
 |------|------|
 | `better-sqlite3` | SQLite 操作 |
 | MiniMax API | 嵌入向量生成 |
+
+---
+
+## 实施说明
+
+### 使用 superpowers 工作流
+
+1. **设计阶段** → 本 spec（已包含验收标准）
+2. **计划阶段** → 对应 plan 文件（Task 分解 + 检查清单）
+3. **执行阶段** → 使用 `superpowers:subagent-driven-development` 或 `superpowers:executing-plans`
+4. **验证阶段** → 使用 `superpowers:verification-before-completion` 逐项验证验收标准
