@@ -108,11 +108,13 @@ export class HierarchicalChunker {
 						currentStartLine,
 					);
 					chunks.push(...subChunks);
+					// 更新 currentStartLine 以包含段落的所有行
+					currentStartLine += paraLines;
 				} else {
 					currentChunk = para + "\n\n";
+					currentStartLine += paraLines;
 				}
-				currentStartLine = startLine + currentLines;
-				currentLines = paraLines;
+				currentLines = 0;
 			}
 		}
 
@@ -167,8 +169,11 @@ export class HierarchicalChunker {
 
 		for (const sentence of sentences) {
 			const sentenceTokens = this.estimateTokens(sentence);
+			const sentenceLines = sentence.split("\n").length;
+
 			if (this.estimateTokens(currentChunk) + sentenceTokens <= this.maxChunkTokens) {
 				currentChunk += sentence;
+				currentStartLine += sentenceLines;
 			} else {
 				if (currentChunk.trim()) {
 					chunks.push({
@@ -182,7 +187,7 @@ export class HierarchicalChunker {
 					});
 				}
 				currentChunk = sentence;
-				currentStartLine += currentChunk.split("\n").length;
+				currentStartLine += sentenceLines;
 			}
 		}
 
