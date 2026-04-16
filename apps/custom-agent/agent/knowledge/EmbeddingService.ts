@@ -16,14 +16,15 @@ export class EmbeddingService {
 	 * 批量嵌入文本
 	 */
 	async embed(texts: string[]): Promise<number[][]> {
-		if (texts.length === 0) return [];
+		const nonEmpty = texts.filter((t) => t.trim().length > 0);
+		if (nonEmpty.length === 0) return [];
 
 		const response = await this.requestWithRetry<EmbeddingResponse>({
 			url: `${this.baseURL}/v1/text/embeddings`,
 			method: "POST",
 			body: {
 				model: "embo-01",
-				texts: texts,
+				texts: nonEmpty,
 			},
 		});
 
