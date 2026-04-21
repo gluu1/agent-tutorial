@@ -52,6 +52,13 @@ export class ContextAssembler {
   }
 
   /**
+   * 获取知识库管理器
+   */
+  getKnowledgeBaseManager(): KnowledgeBaseManager | undefined {
+    return this.knowledgeBaseManager;
+  }
+
+  /**
    * 组装完整上下文
    */
   async assemble(params: {

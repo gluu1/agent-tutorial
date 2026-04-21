@@ -211,8 +211,24 @@ export class ToolLoader {
         },
         required: ["query"],
       },
-      execute: async () => {
-        return { error: "KnowledgeBase not initialized" };
+      execute: async (params, context) => {
+        if (!context.knowledgeBaseManager) {
+          return { error: "KnowledgeBase not initialized" };
+        }
+        try {
+          const results = await context.knowledgeBaseManager.retrieve(
+            params.query,
+            params.topK || 5,
+          );
+          return {
+            count: results.length,
+            context: context.knowledgeBaseManager.formatAsContext(results),
+          };
+        } catch (error) {
+          return {
+            error: `检索失败: ${error instanceof Error ? error.message : String(error)}`,
+          };
+        }
       },
     };
   }

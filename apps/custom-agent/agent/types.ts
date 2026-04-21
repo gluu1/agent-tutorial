@@ -306,6 +306,14 @@ export interface SkillDefinition {
 }
 
 /**
+ * 知识库管理器接口（避免循环依赖）
+ */
+export interface IKnowledgeBaseManager {
+  retrieve(query: string, topK?: number): Promise<any[]>;
+  formatAsContext(results: any[]): string;
+}
+
+/**
  * 执行上下文
  */
 export interface ExecutionContext {
@@ -313,6 +321,7 @@ export interface ExecutionContext {
   userId: string;
   variables: Map<string, any>;
   abortSignal?: AbortSignal;
+  knowledgeBaseManager?: IKnowledgeBaseManager;
 }
 
 /**
