@@ -1,18 +1,18 @@
 // knowledge/VectorStore.ts
 
-import Database from "better-sqlite3";
+import { Database } from "bun:sqlite";
 import { Chunk, SearchResult } from "./types";
 
 /**
- * SQLite 向量存储
+ * SQLite 向量存储 (使用 bun:sqlite)
  */
 export class VectorStore {
-	private db: Database.Database;
+	private db: Database;
 
 	constructor(private dbPath: string) {
 		this.db = new Database(dbPath);
 		// 启用 WAL 模式提升性能
-		this.db.pragma("journal_mode = WAL");
+		this.db.exec("PRAGMA journal_mode = WAL");
 	}
 
 	/**
@@ -54,19 +54,16 @@ export class VectorStore {
 	 * 插入 chunk 和 embedding
 	 */
 	async insertChunk(chunk: Chunk, embedding: number[]): Promise<void> {
-		const stmt = this.db.prepare(`
-			INSERT OR REPLACE INTO chunks (id, doc_id, title_path, content, heading_level, start_line, token_count, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		`);
-
-		const embedStmt = this.db.prepare(`
-			INSERT OR REPLACE INTO embeddings (chunk_id, embedding, updated_at)
-			VALUES (?, ?, ?)
-		`);
-
 		const now = Date.now();
-		const transaction = this.db.transaction(() => {
-			stmt.run(
+
+		// 使用事务
+		this.db.exec("BEGIN TRANSACTION");
+		try {
+			const insertChunk = this.db.prepare(`
+				INSERT OR REPLACE INTO chunks (id, doc_id, title_path, content, heading_level, start_line, token_count, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			`);
+			insertChunk.run(
 				chunk.id,
 				chunk.docId,
 				chunk.titlePath,
@@ -76,10 +73,18 @@ export class VectorStore {
 				chunk.tokenCount,
 				now,
 			);
-			embedStmt.run(chunk.id, JSON.stringify(embedding), now);
-		});
 
-		transaction();
+			const insertEmbed = this.db.prepare(`
+				INSERT OR REPLACE INTO embeddings (chunk_id, embedding, updated_at)
+				VALUES (?, ?, ?)
+			`);
+			insertEmbed.run(chunk.id, JSON.stringify(embedding), now);
+
+			this.db.exec("COMMIT");
+		} catch (error) {
+			this.db.exec("ROLLBACK");
+			throw error;
+		}
 	}
 
 	/**
@@ -90,8 +95,8 @@ export class VectorStore {
 		topK: number,
 		minScore: number,
 	): Promise<SearchResult[]> {
-		const chunks = this.db
-			.prepare(
+		const rows = this.db
+			.query(
 				`
 			SELECT c.id, c.doc_id, c.title_path, c.content, e.embedding
 			FROM chunks c
@@ -109,7 +114,7 @@ export class VectorStore {
 		// 计算余弦相似度并排序
 		const results: SearchResult[] = [];
 
-		for (const row of chunks) {
+		for (const row of rows) {
 			const embedding = JSON.parse(row.embedding) as number[];
 			const score = this.cosineSimilarity(queryEmbedding, embedding);
 
@@ -134,8 +139,8 @@ export class VectorStore {
 	 */
 	async isDocumentChanged(docId: string, fileHash: string): Promise<boolean> {
 		const row = this.db
-			.prepare("SELECT file_hash FROM documents WHERE doc_id = ?")
-			.get(docId) as { file_hash: string } | undefined;
+			.query("SELECT file_hash FROM documents WHERE doc_id = ?")
+			.get(docId) as { file_hash: string } | null;
 
 		return !row || row.file_hash !== fileHash;
 	}
@@ -159,23 +164,31 @@ export class VectorStore {
 	 * 删除文档及其 chunks
 	 */
 	async deleteDocument(docId: string): Promise<void> {
-		const transaction = this.db.transaction(() => {
+		this.db.exec("BEGIN TRANSACTION");
+		try {
 			this.db
-				.prepare("DELETE FROM embeddings WHERE chunk_id IN (SELECT id FROM chunks WHERE doc_id = ?)")
+				.query("DELETE FROM embeddings WHERE chunk_id IN (SELECT id FROM chunks WHERE doc_id = ?)")
 				.run(docId);
-			this.db.prepare("DELETE FROM chunks WHERE doc_id = ?").run(docId);
-			this.db.prepare("DELETE FROM documents WHERE doc_id = ?").run(docId);
-		});
-		transaction();
+			this.db
+				.query("DELETE FROM chunks WHERE doc_id = ?")
+				.run(docId);
+			this.db
+				.query("DELETE FROM documents WHERE doc_id = ?")
+				.run(docId);
+			this.db.exec("COMMIT");
+		} catch (error) {
+			this.db.exec("ROLLBACK");
+			throw error;
+		}
 	}
 
 	/**
 	 * 获取所有文档 ID
 	 */
 	getAllDocIds(): string[] {
-		const rows = this.db.prepare("SELECT doc_id FROM documents").all() as Array<{
-			doc_id: string;
-		}>;
+		const rows = this.db
+			.query("SELECT doc_id FROM documents")
+			.all() as Array<{ doc_id: string }>;
 		return rows.map((r) => r.doc_id);
 	}
 

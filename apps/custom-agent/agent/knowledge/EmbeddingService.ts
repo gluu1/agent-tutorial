@@ -7,7 +7,7 @@ export class EmbeddingService {
 	private apiKey: string;
 	private baseURL: string;
 
-	constructor(apiKey: string, baseURL: string = "https://api.minimax.chat") {
+	constructor(apiKey: string, baseURL: string = "https://open.bigmodel.cn/api/paas/v4") {
 		this.apiKey = apiKey;
 		this.baseURL = baseURL;
 	}
@@ -20,7 +20,7 @@ export class EmbeddingService {
 		if (nonEmpty.length === 0) return [];
 
 		const response = await this.requestWithRetry<EmbeddingResponse>({
-			url: `${this.baseURL}/v1/text/embeddings`,
+			url: `${this.baseURL}/v1/text/embeddings_search`,
 			method: "POST",
 			body: {
 				model: "embo-01",
