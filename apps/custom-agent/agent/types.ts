@@ -15,6 +15,7 @@ export interface AgentConfig {
   workspaceDir?: string;
   systemPrompt?: string;
   rules?: string;
+  knowledgeBaseConfig?: Partial<KnowledgeBaseConfig>;
 }
 
 /**
@@ -170,6 +171,21 @@ export interface SessionMemoryConfig {
 }
 
 /**
+ * 知识库配置
+ */
+export interface KnowledgeBaseConfig {
+  enabled: boolean;
+  docsPath: string; // 文档目录，如 "docs/"
+  dbPath: string; // SQLite 路径，如 "data/knowledge.db"
+  embeddingApiKey?: string; // 嵌入 API Key，不填则用 modelConfig 的
+  embeddingBaseURL?: string;
+  autoIndex?: boolean; // 默认 true，首次启动时全量索引
+  chunkTokenLimit: number; // 默认 800
+  retrievalTopK: number; // 默认 5
+  minScore: number; // 默认 0.6
+}
+
+/**
  * 上下文配置
  */
 export interface ContextConfig {
@@ -290,6 +306,14 @@ export interface SkillDefinition {
 }
 
 /**
+ * 知识库管理器接口（避免循环依赖）
+ */
+export interface IKnowledgeBaseManager {
+  retrieve(query: string, topK?: number): Promise<any[]>;
+  formatAsContext(results: any[]): string;
+}
+
+/**
  * 执行上下文
  */
 export interface ExecutionContext {
@@ -297,6 +321,7 @@ export interface ExecutionContext {
   userId: string;
   variables: Map<string, any>;
   abortSignal?: AbortSignal;
+  knowledgeBaseManager?: IKnowledgeBaseManager;
 }
 
 /**

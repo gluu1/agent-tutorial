@@ -2,6 +2,7 @@
 
 import { AgentMessage, ContextConfig } from "../types";
 import { ThreeTierMemoryManager } from "../memory/threeTierMemory";
+import { KnowledgeBaseManager } from "../knowledge";
 
 /**
  * 组件分类
@@ -13,6 +14,7 @@ type ComponentName =
   | "userInput"
   | "workspace"
   | "sessionSummary"
+  | "knowledgeBase"
   | "longTerm"
   | "history";
 
@@ -30,10 +32,30 @@ interface ContextComponent {
 export class ContextAssembler {
   private config: ContextConfig;
   private memory: ThreeTierMemoryManager;
+  private knowledgeBaseManager?: KnowledgeBaseManager;
 
-  constructor(config: ContextConfig, memory: ThreeTierMemoryManager) {
+  constructor(
+    config: ContextConfig,
+    memory: ThreeTierMemoryManager,
+    knowledgeBaseManager?: KnowledgeBaseManager,
+  ) {
     this.config = config;
     this.memory = memory;
+    this.knowledgeBaseManager = knowledgeBaseManager;
+  }
+
+  /**
+   * 设置知识库管理器（init 后调用）
+   */
+  setKnowledgeBaseManager(manager: KnowledgeBaseManager): void {
+    this.knowledgeBaseManager = manager;
+  }
+
+  /**
+   * 获取知识库管理器
+   */
+  getKnowledgeBaseManager(): KnowledgeBaseManager | undefined {
+    return this.knowledgeBaseManager;
   }
 
   /**
@@ -141,6 +163,24 @@ export class ContextAssembler {
         messages: [this.createMessage("system", sessionSummary)],
         rawContent: sessionSummary,
       });
+    }
+
+    // 知识库检索 (预注入 Top-3)
+    if (this.knowledgeBaseManager) {
+      const kbResults = await this.knowledgeBaseManager.retrieve(
+        params.userInput,
+        3, // Top-3
+      );
+      if (kbResults.length > 0) {
+        const kbContent = this.knowledgeBaseManager.formatAsContext(kbResults);
+        components.push({
+          name: "knowledgeBase",
+          priority: 85, // 高于 sessionSummary
+          compressible: false,
+          messages: [this.createMessage("system", kbContent)],
+          rawContent: kbContent,
+        });
+      }
     }
 
     // 可压缩组件 - Level 6: 长期记忆检索

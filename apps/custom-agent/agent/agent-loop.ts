@@ -336,6 +336,7 @@ export class AgentLoop extends EventEmitter {
       userId: this.config.userId,
       variables: new Map(Object.entries(this.memory.working?.getAll() ?? {})),
       abortSignal: this.abortController.signal,
+      knowledgeBaseManager: this.contextAssembler.getKnowledgeBaseManager(),
     };
 
     for (const toolCall of toolsToExecute) {

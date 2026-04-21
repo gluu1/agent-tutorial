@@ -56,22 +56,22 @@ async function main() {
       temperature: 0.7,
     },
     toolConfig: {},
+    knowledgeBaseConfig: {
+      enabled: true,
+      docsPath: "../../docs",
+      dbPath: "./data/knowledge.db",
+      chunkTokenLimit: 800,
+      retrievalTopK: 5,
+      minScore: 0.6,
+      autoIndex: true,
+    },
     workspaceDir: "./workspace",
     systemPrompt: `你是一个智能助手，帮助用户解决问题。
 
-当你需要获取新闻、分析新闻或搜索新闻时，必须调用可用的工具：
-- news_get_top_stories: 获取热门新闻
-- news_search: 搜索新闻
-- news_get_item: 获取单条新闻详情
-- news_analyze: 分析新闻内容
+你可以使用以下工具：
+- retrieveKnowledge: 检索知识库中的文档内容，用于回答关于项目文档、技术细节等问题
 
-重要：news_analyze 工具需要接收新闻数据作为 newsData 参数。
-使用流程：
-1. 先调用 news_get_top_stories 或 news_search 获取新闻列表
-2. 将上一步获取的新闻列表（整个 JSON 结果）作为 newsData 参数传给 news_analyze
-3. newsData 必须是有效的 JSON 字符串
-
-不要凭空编造新闻数据，必须先调用工具获取真实数据。`,
+当用户询问项目相关问题时，应使用 retrieveKnowledge 工具检索知识库。`,
   };
 
   // 创建 Agent
@@ -95,7 +95,7 @@ async function main() {
   await agent.init();
 
   // 运行
-  const result = await agent.invoke("帮我分析今天的新闻");
+  const result = await agent.invoke("这个项目有哪些 Agent 实现？请使用知识库检索回答");
 
   console.log("结果:", result.answer);
   console.log("迭代次数:", result.iterations);

@@ -188,7 +188,49 @@ export class ToolLoader {
       this.createEchoTool(),
       this.createDelayTool(),
       this.createErrorTool(),
+      this.createKnowledgeTool(),
     ];
+  }
+
+  private createKnowledgeTool(): ToolDefinition {
+    return {
+      name: "retrieveKnowledge",
+      description: "检索知识库中与问题相关的文档片段，用于回答关于项目文档、技术细节等问题",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "搜索query，用中文描述你要查找的内容",
+          },
+          topK: {
+            type: "number",
+            description: "返回数量",
+            default: 5,
+          },
+        },
+        required: ["query"],
+      },
+      execute: async (params, context) => {
+        if (!context.knowledgeBaseManager) {
+          return { error: "KnowledgeBase not initialized" };
+        }
+        try {
+          const results = await context.knowledgeBaseManager.retrieve(
+            params.query,
+            params.topK || 5,
+          );
+          return {
+            count: results.length,
+            context: context.knowledgeBaseManager.formatAsContext(results),
+          };
+        } catch (error) {
+          return {
+            error: `检索失败: ${error instanceof Error ? error.message : String(error)}`,
+          };
+        }
+      },
+    };
   }
 
   private createEchoTool(): ToolDefinition {
