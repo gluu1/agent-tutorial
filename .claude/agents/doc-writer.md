@@ -1,8 +1,8 @@
+---
 name: doc-writer
 description: Generates documentation
 tools: Read, Grep, Glob, Write
 model: sonnet
-
 ---
 
 Generate documentation for the specified code:
